@@ -1,0 +1,735 @@
+# University Resource Management Portal
+# Student Name: Shivika Patidar - 25BAI11010
+# This is a console application implementing the three major functional modules.
+
+import json
+import os
+from datetime import datetime
+
+# --- User Management Module ---
+class User:
+    """Represents a user (Student, Faculty, Admin)."""
+    def __init__(self, username, password, role, email, phone="", dept=""):
+        self.username = username
+        self.password = password 
+        self.role = role
+        self.email = email
+        self.phone = phone
+        self.dept = dept
+        self.joined = datetime.now().strftime("%Y-%m-%d")
+
+    def to_dict(self):
+        # FIX: Changed 'self.join' to 'self.joined' to match __init__
+        return { 
+            'username': self.username,
+            'password': self.password, 
+            'role': self.role, 
+            'email': self.email, 
+            'phone': self.phone,  
+            'dept': self.dept , 
+            'joined': self.joined 
+        }
+
+class UserManager:
+    """Handles user data loading, saving, registration, and authentication."""
+    def __init__(self):
+        self.file = "data/users.json"
+        self.users = []
+        self.current = None
+        self.load()
+
+    def load(self):
+        if os.path.exists(self.file):
+            f = open(self.file, 'r')
+            data = json.load(f)
+            f.close()
+            for u in data:
+                user = User(u['username'], u['password'], u['role'], u['email'], u.get('phone',''), u.get('dept',''))
+                user.joined = u.get('joined', datetime.now().strftime("%Y-%m-%d"))
+                self.users.append(user)
+        else:
+            # Create default admin if file doesn't exist
+            admin = User("admin", "admin123", "ADMIN", "admin@uni.edu")
+            self.users.append(admin)
+            self.save()
+
+    def save(self):
+        if not os.path.exists("data"):
+            os.makedirs("data")
+        f = open(self.file, 'w')
+        data = []
+        for u in self.users:
+            data.append(u.to_dict())
+        json.dump(data, f, indent=2)
+        f.close()
+
+    def register(self, username, password, role, email, phone="", dept=""):
+        for u in self.users:
+            if u.username == username:
+                return False, "username taken"
+        
+        valid_roles = ["STUDENT", "FACULTY", "ADMIN"]
+        if role not in valid_roles:
+            return False, f"Invalid role. Must be one of: {', '.join(valid_roles)}"
+
+        new_user = User(username, password, role, email, phone, dept)
+        self.users.append(new_user)
+        self.save()
+        return True, "registered"
+
+    def login(self, username, password):
+        for u in self.users:
+            if u.username == username and u.password == password:
+                self.current = u
+                return True, "logged in"
+        return False, "wrong credentials"
+
+    def logout(self):
+        self.current = None
+
+    def get_users(self):
+        return self.users
+
+    def delete_user(self, username):
+        i = 0
+        while i < len(self.users):
+            if self.users[i].username == username:
+                del self.users[i]
+                self.save()
+                return True
+            i += 1
+        return False
+
+# --- Resource Inventory Module ---
+class Resource:
+    """Represents an item or location that can be booked."""
+    def __init__(self, rid, name, cat, loc, qty):
+        self.rid = rid
+        self.name = name
+        self.cat = cat
+        self.loc = loc
+        self.qty = qty
+        self.status = "AVAILABLE"
+        self.added = datetime.now().strftime("%Y-%m-%d")
+
+    def to_dict(self):
+        # FIX: Changed 'self.add' to 'self.added' to match __init__
+        return { 
+            'rid': self.rid,
+            'name': self.name,
+            'cat': self.cat,  
+            'loc': self.loc, 
+            'qty': self.qty, 
+            'status': self.status, 
+            'added': self.added 
+        }
+
+class ResourceManager:
+    """Handles resource CRUD operations and searching."""
+    def __init__(self):
+        self.file = "data/resources.json"
+        self.resources = []
+        self.next_id = 1
+        self.load()
+
+    def load(self):
+        if os.path.exists(self.file):
+            f = open(self.file, 'r')
+            data = json.load(f)
+            f.close()
+            for r in data:
+                res = Resource(r['rid'], r['name'], r['cat'], r['loc'], r['qty'])
+                res.status = r.get('status', 'AVAILABLE')
+                res.added = r.get('added', datetime.now().strftime("%Y-%m-%d"))
+                self.resources.append(res)
+
+            if len(self.resources) > 0:
+                max_id = 0
+                for r in self.resources:
+                    try:
+                        rid_int = int(r.rid)
+                    except ValueError:
+                        continue # Skip invalid IDs
+
+                    if rid_int > max_id:
+                        max_id = rid_int
+                self.next_id = max_id + 1
+        else:
+            # Create default resources if file doesn't exist
+            r1 = Resource("1", "Microscope", "Lab Equipment", "Bio Lab 101", 5)
+            r2 = Resource("2", "Study Room A", "Study Room", "Library Floor 2", 1)
+            r3 = Resource("3", "Projector", "Electronics", "CS Dept", 8)
+            self.resources = [r1, r2, r3]
+            self.next_id = 4
+            self.save()
+
+    def save(self):
+        if not os.path.exists("data"):
+            os.makedirs("data")
+        f = open(self.file, 'w')
+        data = []
+        for r in self.resources:
+            data.append(r.to_dict())
+        json.dump(data, f, indent=2)
+        f.close()
+
+    def add(self, name, cat, loc, qty):
+        # FIX: Ensure quantity is an integer with error handling
+        try:
+            qty = int(qty)
+            if qty <= 0:
+                 return False, "Quantity must be a positive number."
+        except ValueError:
+            return False, "Quantity must be a whole number."
+            
+        rid = str(self.next_id)
+        new_res = Resource(rid, name, cat, loc, qty)
+        self.resources.append(new_res)
+        self.next_id += 1
+        self.save()
+        return True, "Resource added."
+
+    def get_all(self):
+        return self.resources
+
+    def get_by_id(self, rid):
+        for r in self.resources:
+            if r.rid == rid:
+                return r
+        return None
+
+    def update(self, rid, name, cat, loc, qty, status):
+        # FIX: Ensure quantity is an integer with error handling
+        try:
+            qty = int(qty)
+            if qty < 0:
+                 return False, "Quantity cannot be negative."
+        except ValueError:
+            return False, "Quantity must be a whole number."
+            
+        for r in self.resources:
+            if r.rid == rid:
+                r.name = name
+                r.cat = cat
+                r.loc = loc
+                r.qty = qty
+                r.status = status
+                self.save()
+                return True
+        return False, "Resource not found."
+
+    def delete(self, rid):
+        i = 0
+        while i < len(self.resources):
+            if self.resources[i].rid == rid:
+                del self.resources[i]
+                self.save()
+                return True
+            i += 1
+        return False
+
+    def search(self, keyword):
+        results = []
+        keyword = keyword.lower()
+        for r in self.resources:
+            if keyword in r.name.lower() or keyword in r.cat.lower():
+                results.append(r)
+        return results
+
+    def get_available(self):
+        avail = []
+        for r in self.resources:
+            if r.status == "AVAILABLE":
+                avail.append(r)
+        return avail
+
+# --- Booking Management Module (Easy Booking) ---
+class Booking:
+    """Represents a reservation for a resource."""
+    def __init__(self, bid, rid, username, start, end, purpose):
+        self.bid = bid
+        self.rid = rid
+        self.username = username
+        self.start = start
+        self.end = end
+        self.purpose = purpose
+        self.status = "PENDING"
+        self.created = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    def to_dict(self):
+        return {'bid': self.bid,
+                'rid': self.rid,
+                'username': self.username,
+                'start': self.start ,
+                'end': self.end,
+                'purpose': self.purpose,  
+                'status': self.status,  
+                'created': self.created }
+
+class BookingManager:
+    """Handles booking creation, validation (conflict checking), and status changes."""
+    def __init__(self):
+        self.file = "data/bookings.json"
+        self.bookings = []
+        self.next_id = 1
+        self.load()
+
+    def load(self):
+        if os.path.exists(self.file):
+            f = open(self.file, 'r')
+            data = json.load(f)
+            f.close()
+            for b in data:
+                booking = Booking(b['bid'], b['rid'], b['username'], b['start'], b['end'], b['purpose'])
+                booking.status = b.get('status', 'PENDING')
+                booking.created = b.get('created', datetime.now().strftime("%Y-%m-%d %H:%M"))
+                self.bookings.append(booking)
+
+            if len(self.bookings) > 0:
+                max_id = 0
+                for b in self.bookings:
+                    try:
+                        bid_int = int(b.bid)
+                    except ValueError:
+                        continue
+                        
+                    if bid_int > max_id:
+                        max_id = bid_int
+                self.next_id = max_id + 1
+
+    def save(self):
+        if not os.path.exists("data"):
+            os.makedirs("data")
+        f = open(self.file, 'w')
+        data = []
+        for b in self.bookings:
+            data.append(b.to_dict())
+        json.dump(data, f, indent=2)
+        f.close()
+
+    def check_conflict(self, rid, start, end, skip_bid=None):
+        """Automated Conflict Detection (Reliability NFR)."""
+        try:
+            start_dt = datetime.strptime(start, "%Y-%m-%d %H:%M")
+            end_dt = datetime.strptime(end, "%Y-%m-%d %H:%M")
+        except:
+            return True, "Error: Use date format YYYY-MM-DD HH:MM." # Bug fix: returned error message
+
+        for b in self.bookings:
+            if skip_bid and b.bid == skip_bid:
+                continue
+
+            # Check only against pending and approved bookings
+            if b.rid == rid and b.status in ["PENDING", "APPROVED"]:
+                try:
+                    b_start = datetime.strptime(b.start, "%Y-%m-%d %H:%M")
+                    b_end = datetime.strptime(b.end, "%Y-%m-%d %H:%M")
+                except:
+                    continue # Skip bookings with bad date format
+
+                # Overlap logic: start_dt < b_end AND end_dt > b_start
+                if start_dt < b_end and end_dt > b_start:
+                    return True, f"Conflict: Resource is booked by {b.username} from {b.start} to {b.end}."
+
+        return False, "ok"
+
+    def create(self, rid, username, start, end, purpose):
+        # FIX: Check if resource exists before creating booking
+        if not res_mgr.get_by_id(rid):
+            return False, "Error: Resource ID not found."
+            
+        try:
+            start_dt = datetime.strptime(start, "%Y-%m-%d %H:%M")
+            end_dt = datetime.strptime(end, "%Y-%m-%d %H:%M")
+        except:
+            return False, "Error: Use format YYYY-MM-DD HH:MM."
+
+        if end_dt <= start_dt:
+            return False, "Error: End time must be after start time."
+
+        if start_dt < datetime.now():
+            return False, "Error: Cannot book resources in the past."
+
+        conflict, msg = self.check_conflict(rid, start, end)
+        if conflict:
+            return False, msg
+
+        bid = str(self.next_id)
+        new_booking = Booking(bid, rid, username, start, end, purpose)
+        self.bookings.append(new_booking)
+        self.next_id += 1
+        self.save()
+        return True, "Booking created."
+
+    def get_all(self):
+        return self.bookings
+
+    def get_by_user(self, username):
+        user_bookings = []
+        for b in self.bookings:
+            if b.username == username:
+                user_bookings.append(b)
+        return user_bookings
+
+    def get_by_id(self, bid):
+        for b in self.bookings:
+            if b.bid == bid:
+                return b
+        return None
+
+    def approve(self, bid):
+        for b in self.bookings:
+            if b.bid == bid:
+                b.status = "APPROVED"
+                self.save()
+                return True
+        return False
+
+    def reject(self, bid):
+        for b in self.bookings:
+            if b.bid == bid:
+                b.status = "REJECTED"
+                self.save()
+                return True
+        return False
+
+    def cancel(self, bid):
+        for b in self.bookings:
+            if b.bid == bid:
+                b.status = "CANCELLED"
+                self.save()
+                return True
+        return False
+
+# --- Usage Reports Module ---
+class ReportManager:
+    """Generates analytics from resource and booking data."""
+    def __init__(self, resource_mgr, booking_mgr):
+        self.res_mgr = resource_mgr
+        self.book_mgr = booking_mgr
+
+    def popular_resources(self):
+        resource_count = {}
+
+        for b in self.book_mgr.bookings:
+            if b.status == "APPROVED":
+                if b.rid in resource_count:
+                    resource_count[b.rid] += 1
+                else:
+                    resource_count[b.rid] = 1
+
+        results = []
+        for rid, count in resource_count.items():
+            res = self.res_mgr.get_by_id(rid)
+            if res:
+                results.append({'name': res.name, 'bookings': count, 'resource_id': rid}) # Added resource_id for context
+
+        # FIX: Use built-in sort for efficiency and readability
+        results.sort(key=lambda item: item['bookings'], reverse=True)
+        return results
+
+    def user_activity(self):
+        user_count = {}
+
+        for b in self.book_mgr.bookings:
+            if b.username in user_count:
+                user_count[b.username] += 1
+            else:
+                user_count[b.username] = 1
+
+        results = []
+        for username, count in user_count.items():
+            results.append({'user': username, 'total_bookings': count})
+            
+        results.sort(key=lambda item: item['total_bookings'], reverse=True)
+        return results
+
+    def status_summary(self):
+        status_count = {}
+
+        for b in self.book_mgr.bookings:
+            if b.status in status_count:
+                status_count[b.status] += 1
+            else:
+                status_count[b.status] = 1
+
+        return status_count
+
+    def save_csv(self, filename, data):
+        """Saves report data into a CSV file."""
+        if not data:
+            print("No data to save.")
+            return
+
+        # Ensure directory exists for saving reports
+        report_dir = os.path.dirname(filename)
+        if report_dir and not os.path.exists(report_dir):
+            os.makedirs(report_dir)
+
+        try:
+            with open(filename, 'w') as f:
+                # write header
+                keys = list(data[0].keys())
+                header = ",".join(keys)
+                f.write(header + "\n")
+
+                # write rows
+                for row in data:
+                    line_values = [str(row[k]) for k in keys]
+                    f.write(",".join(line_values) + "\n")
+            print(f"Report successfully saved to {filename}")
+        except Exception as e:
+            print(f"Error saving file: {e}")
+
+
+# Global Manager Initialization (required for interaction between classes in console apps)
+user_mgr = UserManager()
+res_mgr = ResourceManager()
+book_mgr = BookingManager()
+report_mgr = ReportManager(res_mgr, book_mgr)
+
+
+# --- Main Application Loop ---
+def main():
+    
+    # Reload managers to ensure they have the latest data before loop starts
+    user_mgr.load()
+    res_mgr.load()
+    book_mgr.load()
+    # report_mgr is initialized once above
+
+    while True:
+        print("\n=== University Resource Portal ===")
+
+        if not user_mgr.current:
+            # --- Pre-Login Menu ---
+            print("1. Login")
+            print("2. Register")
+            print("3. Exit")
+            choice = input("Choose: ")
+
+            if choice == "1":
+                username = input("Username: ")
+                password = input("Password: ")
+                success, msg = user_mgr.login(username, password)
+                print(msg)
+
+            elif choice == "2":
+                username = input("Username: ")
+                password = input("Password: ")
+                email = input("Email: ")
+                print("Role: STUDENT / FACULTY / ADMIN")
+                role = input("Role: ").upper()
+                phone = input("Phone (optional): ")
+                dept = input("Department (optional): ")
+                # Role validation is now inside user_mgr.register
+                success, msg = user_mgr.register(username, password, role, email, phone, dept)
+                print(msg)
+
+            elif choice == "3":
+                print("Goodbye!")
+                break
+            else:
+                print("Invalid choice. Please enter 1, 2, or 3.")
+
+        else:
+            # --- Post-Login Menu ---
+            current_user = user_mgr.current
+            print(f"\nWelcome {current_user.username} ({current_user.role})")
+            print("\n--- General Actions ---")
+            print("1. View All Resources")
+            print("2. Search Resources")
+            print("3. My Bookings")
+            print("4. Create New Booking")
+
+            if current_user.role == "ADMIN":
+                print("\n--- Admin Management ---")
+                print("5. Manage Resources (CRUD)")
+                print("6. Manage Bookings (Approve/Reject)")
+                print("7. View Reports (Usage/Activity)")
+                print("8. Manage Users (Delete)")
+
+            print("9. Logout")
+
+            choice = input("\nChoose: ")
+
+            if choice == "1":
+                resources = res_mgr.get_all()
+                print("\n--- All Resources ---")
+                if not resources:
+                    print("No resources found.")
+                for r in resources:
+                    print(f"ID: {r.rid} | {r.name} | {r.cat} | {r.loc} | Qty: {r.qty} | {r.status}")
+
+            elif choice == "2":
+                keyword = input("Search by Name or Category: ")
+                results = res_mgr.search(keyword)
+                print(f"\n--- Found {len(results)} results ---")
+                if not results:
+                    print("No results found.")
+                for r in results:
+                    print(f"ID: {r.rid} | {r.name} | {r.cat} | {r.loc} | Qty: {r.qty}")
+
+            elif choice == "3":
+                bookings = book_mgr.get_by_user(current_user.username)
+                print("\n--- My Bookings ---")
+                if not bookings:
+                    print("You have no bookings.")
+                    continue
+                for b in bookings:
+                    res = res_mgr.get_by_id(b.rid)
+                    res_name = res.name if res else "Unknown Resource"
+                    print(f"ID: {b.bid} | {res_name} | {b.start} to {b.end} | Status: {b.status}")
+
+            elif choice == "4":
+                rid = input("Resource ID to Book: ")
+                start = input("Start (YYYY-MM-DD HH:MM): ")
+                end = input("End (YYYY-MM-DD HH:MM): ")
+                purpose = input("Purpose: ")
+                success, msg = book_mgr.create(rid, current_user.username, start, end, purpose)
+                print(msg)
+
+            # --- Admin Options ---
+            elif choice == "5" and current_user.role == "ADMIN":
+                print("\n--- Manage Resources ---")
+                print("1. Add Resource (Create)")
+                print("2. Update Resource (Update)")
+                print("3. Delete Resource (Delete)")
+                sub = input("Choose: ")
+
+                if sub == "1":
+                    name = input("Name: ")
+                    cat = input("Category: ")
+                    loc = input("Location: ")
+                    qty = input("Quantity: ")
+                    success, msg = res_mgr.add(name, cat, loc, qty)
+                    print(msg)
+
+                elif sub == "2":
+                    rid = input("Resource ID to Update: ")
+                    r = res_mgr.get_by_id(rid)
+                    if not r:
+                        print("Resource not found.")
+                        continue
+                        
+                    name = input(f"Name (Current: {r.name}): ") or r.name
+                    cat = input(f"Category (Current: {r.cat}): ") or r.cat
+                    loc = input(f"Location (Current: {r.loc}): ") or r.loc
+                    qty = input(f"Quantity (Current: {r.qty}): ") or str(r.qty) # Input needs to be string
+                    status = input(f"Status (Current: {r.status}) [AVAILABLE/MAINTENANCE]: ").upper() or r.status
+                    
+                    success, msg = res_mgr.update(rid, name, cat, loc, qty, status)
+                    if success:
+                        print("Resource updated.")
+                    else:
+                        print(f"Update failed: {msg}")
+
+                elif sub == "3":
+                    rid = input("Resource ID to Delete: ")
+                    # Check for active bookings before deleting (optional but good NFR)
+                    # if book_mgr.get_by_resource(rid):
+                    #    print("Cannot delete resource with active bookings.")
+                    #    continue
+                    if res_mgr.delete(rid):
+                        print("Resource deleted.")
+                    else:
+                        print("Resource not found.")
+                else:
+                    print("Invalid choice. Please enter 1, 2, or 3.")
+
+            elif choice == "6" and current_user.role == "ADMIN":
+                bookings = book_mgr.get_all()
+                print("\n--- All Bookings ---")
+                if not bookings:
+                    print("No bookings found.")
+                    continue
+                for b in bookings:
+                    res = res_mgr.get_by_id(b.rid)
+                    res_name = res.name if res else "Unknown"
+                    print(f"ID: {b.bid} | User: {b.username} | Resource: {res_name} | Status: {b.status} | Start: {b.start}")
+
+                bid = input("\nBooking ID to manage (or 0 to skip): ")
+                if bid != "0":
+                    print("1. Approve (Set to APPROVED)")
+                    print("2. Reject (Set to REJECTED)")
+                    action = input("Choose: ")
+                    if action == "1":
+                        if book_mgr.approve(bid):
+                            print("Booking approved.")
+                        else:
+                            print("Approval failed or BID not found.")
+                    elif action == "2":
+                        if book_mgr.reject(bid):
+                            print("Booking rejected.")
+                        else:
+                            print("Rejection failed or BID not found.")
+                    else:
+                        print("Invalid choice. Please enter 1 or 2.")
+
+            elif choice == "7" and current_user.role == "ADMIN":
+                print("\n--- Usage Reports ---")
+                print("1. Popular Resources (by Approved Bookings)")
+                print("2. User Activity Summary")
+                print("3. Booking Status Counts")
+                sub = input("Choose: ")
+
+                if sub == "1":
+                    results = report_mgr.popular_resources()
+                    print("\n--- Popular Resources ---")
+                    if not results:
+                        print("No approved booking data for reporting.")
+                        continue
+                    for r in results:
+                        print(f"{r['name']}: {r['bookings']} bookings")
+
+                    save = input("\nSave as CSV? (y/n): ")
+                    if save.lower() == 'y':
+                        report_mgr.save_csv("reports/popular_resources.csv", results)
+
+                elif sub == "2":
+                    results = report_mgr.user_activity()
+                    print("\n--- User Activity ---")
+                    if not results:
+                        print("No booking data for reporting.")
+                        continue
+                    for u in results:
+                        print(f"{u['user']}: {u['total_bookings']} total bookings")
+
+                elif sub == "3":
+                    results = report_mgr.status_summary()
+                    print("\n--- Booking Status ---")
+                    if not results:
+                        print("No booking data for reporting.")
+                        continue
+                    for status, count in results.items():
+                        print(f"{status}: {count}")
+                else:
+                    print("Invalid choice. Please enter 1, 2, or 3.")
+
+            elif choice == "8" and current_user.role == "ADMIN":
+                users = user_mgr.get_users()
+                print("\n--- All Users ---")
+                if not users:
+                    print("No users found.")
+                    continue
+                for u in users:
+                    print(f"Username: {u.username} | Role: {u.role} | Email: {u.email}")
+                
+                delete_username = input("\nEnter username to DELETE (or 0 to skip): ")
+                if delete_username != "0":
+                    if delete_username == current_user.username:
+                        print("Error: Cannot delete the currently logged-in user.")
+                        continue
+                    if user_mgr.delete_user(delete_username):
+                        print(f"User {delete_username} deleted.")
+                    else:
+                        print("User not found.")
+                        
+            elif choice == "9":
+                user_mgr.logout()
+                print("Successfully logged out.")
+            else:
+                print("Invalid choice. Please choose a valid option from the menu.")
+
+if __name__ == "__main__":
+    main()
